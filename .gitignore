@@ -1,0 +1,6 @@
+# From Week 6 lab
+.env
+__pycache__/
+*.py[cod]
+staticfiles/
+.DS_Store
