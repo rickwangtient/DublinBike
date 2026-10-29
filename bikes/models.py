@@ -1,162 +1,61 @@
-# From Week 6 lab (cities/models.py). Point model: use for bike stations.
-# cities/models.py
+# Based on Week 6 lab models (cities/models.py and regions/models.py)
 from django.contrib.gis.db import models
-from django.contrib.gis.geos import Point
 
-class City(models.Model):
-    CITY_TYPE_CHOICES = [
-        ('capital', 'Capital City'),
-        ('major', 'Major City'),
-        ('regional', 'Regional City'),
-        ('town', 'Town'),
-    ]
 
-    # Basic information
+class Station(models.Model):
+    """A Dublin Bikes station (point)."""
+
+    station_id = models.IntegerField(unique=True)
     name = models.CharField(max_length=100)
-    country = models.CharField(max_length=100)
-    population = models.IntegerField()
-
-    # Geographic data
-    latitude = models.FloatField()
-    longitude = models.FloatField()
+    address = models.CharField(max_length=200, blank=True)
+    bike_stands = models.PositiveIntegerField()
+    available_bikes = models.PositiveIntegerField(default=0)
     location = models.PointField(srid=4326)
-    elevation = models.IntegerField(null=True, blank=True)
-
-    # City characteristics
-    city_type = models.CharField(max_length=20, choices=CITY_TYPE_CHOICES, default='town')
-    urban_area_km2 = models.FloatField(null=True, blank=True)
-    population_density = models.FloatField(null=True, blank=True)
-
-    # Economic data
-    gdp_per_capita = models.IntegerField(null=True, blank=True)
-    unemployment_rate = models.FloatField(null=True, blank=True)
-
-    # Environmental data
-    green_space_percentage = models.FloatField(null=True, blank=True)
-
-    # Administrative data - ADD THESE MISSING FIELDS
-    region_code = models.CharField(max_length=10, blank=True, null=True)
-
-    # Metadata - ADD THESE MISSING FIELDS  
-    population_year = models.IntegerField(null=True, blank=True)
-    data_source = models.CharField(max_length=100, blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    #updated_at = models.DateTimeField(auto_now=True)
-    last_updated = models.DateTimeField(auto_now=True)
-
-    def save(self, *args, **kwargs):
-        # Automatically create Point from lat/lng
-        if self.latitude is not None and self.longitude is not None:
-            self.location = Point(float(self.longitude), float(self.latitude), srid=4326)
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.name}, {self.country}"
 
     class Meta:
-        db_table = 'cities_city'
-        unique_together = ['name', 'country']
-        indexes = [
-            models.Index(fields=['country']),
-            models.Index(fields=['city_type']),
-            models.Index(fields=['population']),
-        ]
-
-# From Week 6 lab (regions/models.py). Polygon model: use for parks/areas.
-from django.contrib.gis.geos import GEOSGeometry
-from django.core.validators import MinValueValidator, MaxValueValidator
-
-class Region(models.Model):
-    # Basic Information
-    name = models.CharField(max_length=100, db_index=True)
-    country = models.CharField(max_length=100, db_index=True)
-    region_code = models.CharField(max_length=10, unique=True)
-    region_type = models.CharField(max_length=50, choices=[
-        ('country', 'Country'),
-        ('state', 'State/Province'),
-        ('county', 'County'),
-        ('municipality', 'Municipality'),
-        ('district', 'District'),
-    ])
-
-    # Geographic Data
-    geometry = models.MultiPolygonField(srid=4326)
-    centroid = models.PointField(srid=4326, null=True, blank=True)
-    area_km2 = models.FloatField(validators=[MinValueValidator(0)])
-    perimeter_km = models.FloatField(null=True, blank=True)
-
-    # Population Data
-    total_population = models.IntegerField(validators=[MinValueValidator(0)])
-    population_year = models.IntegerField(default=2023)
-    population_density = models.FloatField()  # people per km²
-    urban_population_pct = models.FloatField(
-        null=True, blank=True,
-        validators=[MinValueValidator(0), MaxValueValidator(100)]
-    )
-
-    # Economic Indicators
-    gdp_total = models.FloatField(null=True, blank=True)  # Million EUR
-    gdp_per_capita = models.FloatField(null=True, blank=True)  # EUR
-    unemployment_rate = models.FloatField(
-        null=True, blank=True,
-        validators=[MinValueValidator(0), MaxValueValidator(100)]
-    )
-
-    # Land Use Data
-    agricultural_area_pct = models.FloatField(
-        null=True, blank=True,
-        validators=[MinValueValidator(0), MaxValueValidator(100)]
-    )
-    forest_area_pct = models.FloatField(
-        null=True, blank=True,
-        validators=[MinValueValidator(0), MaxValueValidator(100)]
-    )
-    urban_area_pct = models.FloatField(
-        null=True, blank=True,
-        validators=[MinValueValidator(0), MaxValueValidator(100)]
-    )
-
-    # Administrative Hierarchy
-    parent_region = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True)
-    admin_level = models.IntegerField(default=1)  # 1=country, 2=state, 3=county, etc.
-
-    # Metadata
-    data_source = models.CharField(max_length=200, blank=True)
-    last_updated = models.DateTimeField(auto_now=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def save(self, *args, **kwargs):
-        # Calculate area from geometry if not provided
-        if self.geometry and not self.area_km2:
-            # Transform to equal-area projection for accurate area calculation
-            geom_transformed = self.geometry.transform(3857, clone=True)  # Web Mercator
-            self.area_km2 = geom_transformed.area / 1000000  # Convert m² to km²
-
-        # Calculate population density
-        if self.total_population and self.area_km2:
-            self.population_density = self.total_population / self.area_km2
-
-        # Calculate centroid
-        if self.geometry:
-            self.centroid = self.geometry.centroid
-
-        super().save(*args, **kwargs)
-
-    @property
-    def cities_count(self):
-        """Count cities within this region"""
-        from cities.models import City
-        return City.objects.filter(location__within=self.geometry).count()
+        ordering = ['name']
 
     def __str__(self):
-        return f"{self.name} ({self.region_type}) - {self.total_population:,}"
+        return self.name
+
+
+class CycleLane(models.Model):
+    """A cycle lane or cycleway (line)."""
+
+    name = models.CharField(max_length=100)
+    lane_type = models.CharField(max_length=50, blank=True)
+    path = models.LineStringField(srid=4326)
 
     class Meta:
-        db_table = 'regions_region'
-        unique_together = ['name', 'country', 'region_type']
-        indexes = [
-            models.Index(fields=['country']),
-            models.Index(fields=['region_type']),
-            models.Index(fields=['total_population']),
-            models.Index(fields=['area_km2']),
-        ]
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class Park(models.Model):
+    """A park or green space (polygon)."""
+
+    name = models.CharField(max_length=100)
+    area = models.MultiPolygonField(srid=4326)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class FavouriteStation(models.Model):
+    """A station a user has saved. Used for create, update and delete."""
+
+    station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='favourites')
+    nickname = models.CharField(max_length=50)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.nickname} ({self.station.name})"
