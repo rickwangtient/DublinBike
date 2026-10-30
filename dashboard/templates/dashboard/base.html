@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}European Urban Planning Dashboard{% endblock %}</title>
+    <title>{% block title %}Dublin Bike Map{% endblock %}</title>
 
     <!-- Bootstrap CSS - Latest -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
@@ -30,15 +30,11 @@
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-dark bg-success">
         <div class="container-fluid">
             <a class="navbar-brand" href="{% url 'dashboard_index' %}">
-                🌍 European Urban Planning Dashboard
+                🚲 Dublin Bike Map
             </a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_index' %}active{% endif %}" href="{% url 'dashboard_index' %}">Dashboard</a>
-                <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_analytics' %}active{% endif %}" href="{% url 'dashboard_analytics' %}">Analytics</a>
-            </div>
         </div>
     </nav>
 
@@ -54,7 +50,7 @@
             <div class="row">
                 <div class="col-md-6">
                     <small class="text-muted">
-                        European Urban Planning Dashboard - Week 6 Lab
+                        Station data: Dublin Bikes (CC BY 4.0). Lanes and parks: © OpenStreetMap contributors (ODbL).
                     </small>
                 </div>
                 <div class="col-md-6 text-end">

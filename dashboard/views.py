@@ -12,8 +12,3 @@ def index(request):
         'total_parks': Park.objects.count(),
     }
     return render(request, 'dashboard/index.html', context)
-
-
-def analytics(request):
-    """Week 6 analytics page. Not built for Dublin Bike yet."""
-    return render(request, 'dashboard/analytics.html', {})
