@@ -6,10 +6,21 @@ from bikes.models import CycleLane, FavouriteStation, Park, Station
 
 
 class StationSerializer(GeoFeatureModelSerializer):
+    distance_m = serializers.SerializerMethodField()
+
     class Meta:
         model = Station
         geo_field = 'location'
-        fields = ['id', 'station_id', 'name', 'address', 'bike_stands', 'available_bikes']
+        fields = [
+            'id', 'station_id', 'name', 'address',
+            'bike_stands', 'available_bikes', 'distance_m',
+        ]
+
+    def get_distance_m(self, obj):
+        distance = getattr(obj, 'distance', None)
+        if distance is None:
+            return None
+        return round(distance.m)
 
 
 class CycleLaneSerializer(GeoFeatureModelSerializer):
