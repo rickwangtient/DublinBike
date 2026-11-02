@@ -1,236 +1,99 @@
-# From Week 6 lab (tests/test_api_endpoints.py).
-# tests/test_api_endpoints.py
+# Checks the Dublin Bike API. Run inside the web container:
+#   docker compose exec web python tests/test_api_endpoints.py
+import sys
+
 import requests
-import json
-from datetime import datetime
 
-class EuropeanMappingAPITester:
-    def __init__(self, base_url='http://localhost:8000'):
-        self.base_url = base_url
-        self.session = requests.Session()
+BASE = 'http://localhost:8000'
+session = requests.Session()
+failed = False
 
-    def test_server_connectivity(self):
-        """Test if the Django server is running"""
-        print("🔗 Testing server connectivity...")
-        try:
-            response = self.session.get(self.base_url, timeout=5)
-            print(f" Server accessible: HTTP {response.status_code}")
-            return True
-        except requests.exceptions.RequestException as e:
-            print(f" Server not accessible: {e}")
-            return False
 
-    def test_cities_endpoint(self):
-        """Test cities API endpoint"""
-        print("\n🏙️ Testing Cities Endpoint...")
+def check(name, ok, detail=''):
+    global failed
+    print(('ok  ' if ok else 'FAIL') + '  ' + name + (('  ' + detail) if detail else ''))
+    if not ok:
+        failed = True
 
-        try:
-            response = self.session.get(f'{self.base_url}/api/cities/')
-            print(f"Status Code: {response.status_code}")
 
-            if response.status_code != 200:
-                print(f" Expected 200, got {response.status_code}")
-                print(f"Response: {response.text[:500]}")
-                return False
+def get_json(path):
+    response = session.get(BASE + path, timeout=20)
+    return response.status_code, response.json()
 
-            data = response.json()
-            print(f"Response type: {type(data)}")
-            print(f"Response keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
 
-            # Check if it's a proper GeoJSON FeatureCollection
-            if not isinstance(data, dict):
-                print(" Response is not a JSON object")
-                return False
+def features(path):
+    status, data = get_json(path)
+    count = len(data.get('features', [])) if isinstance(data, dict) else 0
+    return status, data, count
 
-            if data.get('type') != 'FeatureCollection':
-                print(f" Expected 'FeatureCollection', got '{data.get('type')}'")
-                return False
 
-            features = data.get('features', [])
-            print(f"Number of features: {len(features)}")
+def main():
+    try:
+        home = session.get(BASE + '/', timeout=5)
+        check('map page', home.status_code == 200, f'HTTP {home.status_code}')
+    except requests.RequestException as error:
+        check('map page', False, str(error))
+        return 1
 
-            if len(features) == 0:
-                print("  No cities found in database - this might be expected if no data has been loaded")
-                return True  # Not a failure if no data exists
+    status, data, count = features('/api/stations/')
+    check('stations GeoJSON', status == 200 and data.get('type') == 'FeatureCollection' and count == 115, f'{count} features')
+    if count:
+        props = data['features'][0]['properties']
+        check('station fields', {'name', 'available_bikes', 'bike_stands'} <= set(props))
 
-            # Test first feature structure
-            feature = features[0]
-            required_keys = ['type', 'geometry', 'properties']
+    status, data, count = features('/api/lanes/')
+    check('lanes GeoJSON', status == 200 and data.get('type') == 'FeatureCollection' and count > 1000, f'{count} features')
 
-            for key in required_keys:
-                if key not in feature:
-                    print(f" Missing required key: {key}")
-                    return False
+    status, data, count = features('/api/parks/')
+    check('parks GeoJSON', status == 200 and data.get('type') == 'FeatureCollection' and count == 60, f'{count} features')
+    parks = {feature['properties']['name']: feature['id'] for feature in data.get('features', [])}
 
-            # Check geometry
-            geom = feature['geometry']
-            if geom['type'] != 'Point':
-                print(f" Expected Point geometry, got {geom['type']}")
-                return False
+    status, body = get_json('/api/stations/nearby/')
+    check('nearby needs coordinates', status == 400 and 'lat' in body.get('error', ''))
 
-            if not isinstance(geom['coordinates'], list) or len(geom['coordinates']) != 2:
-                print(f" Invalid coordinates: {geom['coordinates']}")
-                return False
+    status, data, count = features('/api/stations/nearby/?lat=53.3547&lng=-6.2795&distance=0.8')
+    distances = [feature['properties'].get('distance_m') for feature in data.get('features', [])]
+    check('nearby Grangegorman', status == 200 and count > 0 and distances[0] == min(distances), f'{count} stations, closest {distances[0] if distances else "n/a"} m')
 
-            # Check properties
-            props = feature['properties']
-            required_props = ['name', 'country', 'population']
+    green = parks.get("St Stephen's Green")
+    phoenix = parks.get('Phoenix Park')
+    check('park names found', green is not None and phoenix is not None)
 
-            for prop in required_props:
-                if prop not in props:
-                    print(f" Missing required property: {prop}")
-                    return False
+    if green:
+        status, data, count = features(f'/api/stations/in_park/?park_id={green}')
+        check('stations inside a park', status == 200 and data.get('type') == 'FeatureCollection', f'{count} stations')
+        status, data, count = features(f'/api/stations/near_park/?park_id={green}&distance=200')
+        check('stations near a park', status == 200 and count > 0, f'{count} stations')
 
-            print(f" Cities endpoint working correctly")
-            print(f"Sample city: {props['name']}, {props['country']} (Pop: {props['population']:,})")
-            return True
+    if phoenix:
+        status, data, count = features(f'/api/lanes/through_park/?park_id={phoenix}')
+        check('lanes crossing a park', status == 200 and count > 0, f'{count} lanes')
 
-        except requests.exceptions.RequestException as e:
-            print(f" Request failed: {e}")
-            return False
-        except json.JSONDecodeError as e:
-            print(f" Invalid JSON response: {e}")
-            return False
-        except Exception as e:
-            print(f" Unexpected error: {e}")
-            return False
+    status, missing = get_json('/api/stations/near_park/')
+    check('park search needs an id', status == 400)
 
-    def test_regions_endpoint(self):
-        """Test regions API endpoint"""
-        print("\n🗺️ Testing Regions Endpoint...")
+    stations_status, stations = get_json('/api/stations/')
+    station_id = stations['features'][0]['id']
+    created = session.post(
+        BASE + '/api/favourites/',
+        json={'station': station_id, 'nickname': 'Test stop', 'notes': 'api check'},
+        timeout=20,
+    )
+    check('create favourite', created.status_code == 201, f'HTTP {created.status_code}')
+    if created.status_code == 201:
+        favourite_id = created.json()['id']
+        updated = session.put(
+            f'{BASE}/api/favourites/{favourite_id}/',
+            json={'station': station_id, 'nickname': 'Updated stop', 'notes': ''},
+            timeout=20,
+        )
+        check('update favourite', updated.status_code == 200 and updated.json()['nickname'] == 'Updated stop')
+        deleted = session.delete(f'{BASE}/api/favourites/{favourite_id}/', timeout=20)
+        check('delete favourite', deleted.status_code == 204, f'HTTP {deleted.status_code}')
 
-        try:
-            response = self.session.get(f'{self.base_url}/api/regions/')
-            print(f"Status Code: {response.status_code}")
+    print('FAILED' if failed else 'All checks passed')
+    return 1 if failed else 0
 
-            if response.status_code != 200:
-                print(f" Expected 200, got {response.status_code}")
-                print(f"Response: {response.text[:500]}")
-                return False
 
-            data = response.json()
-            print(f"Response type: {type(data)}")
-
-            if not isinstance(data, dict):
-                print(" Response is not a JSON object")
-                return False
-
-            if data.get('type') != 'FeatureCollection':
-                print(f" Expected 'FeatureCollection', got '{data.get('type')}'")
-                return False
-
-            features = data.get('features', [])
-            print(f"Number of features: {len(features)}")
-
-            if len(features) == 0:
-                print("  No regions found in database - this might be expected if no data has been loaded")
-                return True
-
-            # Test first feature
-            feature = features[0]
-            props = feature['properties']
-
-            print(f" Regions endpoint working correctly")
-            print(f"Sample region: {props.get('name', 'Unknown')}, {props.get('country', 'Unknown')}")
-            return True
-
-        except Exception as e:
-            print(f" Error testing regions: {e}")
-            return False
-
-    def test_statistics_endpoints(self):
-        """Test statistics endpoints"""
-        print("\n📊 Testing Statistics Endpoints...")
-
-        endpoints = [
-            '/api/cities/statistics/',
-            '/api/regions/statistics/'
-        ]
-
-        success = True
-        for endpoint in endpoints:
-            try:
-                response = self.session.get(f'{self.base_url}{endpoint}')
-                print(f"{endpoint}: HTTP {response.status_code}")
-
-                if response.status_code == 200:
-                    data = response.json()
-                    print(f"  Stats keys: {list(data.keys())}")
-                else:
-                    print(f"  Failed: {response.text[:200]}")
-                    success = False
-
-            except Exception as e:
-                print(f" Error: {e}")
-                success = False
-
-        return success
-
-    def test_filtering(self):
-        """Test filtering functionality"""
-        print("\n🔍 Testing Filtering...")
-
-        # Test city filters
-        test_filters = [
-            ('population_min=100000', 'Population filter'),
-            ('country=Germany', 'Country filter'),
-            ('city_type=capital', 'City type filter')
-        ]
-
-        for filter_param, description in test_filters:
-            try:
-                url = f'{self.base_url}/api/cities/?{filter_param}'
-                response = self.session.get(url)
-
-                if response.status_code == 200:
-                    data = response.json()
-                    count = len(data.get('features', []))
-                    print(f" {description}: {count} results")
-                else:
-                    print(f" {description} failed: HTTP {response.status_code}")
-
-            except Exception as e:
-                print(f" {description} error: {e}")
-
-        return True
-
-    def run_all_tests(self):
-        """Run all tests"""
-        print("🧪 Starting European Mapping API Tests")
-        print("=" * 50)
-
-        # Test server connectivity first
-        if not self.test_server_connectivity():
-            print(" Server not accessible. Make sure Django is running: python manage.py runserver")
-            return False
-
-        results = {
-            'cities': self.test_cities_endpoint(),
-            'regions': self.test_regions_endpoint(), 
-            'statistics': self.test_statistics_endpoints(),
-            'filtering': self.test_filtering()
-        }
-
-        print("\n" + "=" * 50)
-        print(" Test Results Summary:")
-
-        passed = sum(results.values())
-        total = len(results)
-
-        for test_name, result in results.items():
-            status = " PASS" if result else " FAIL"
-            print(f"  {test_name.title()}: {status}")
-
-        print(f"\n🎯 Overall: {passed}/{total} tests passed")
-
-        if passed == total:
-            print(" All tests passed!")
-        else:
-            print("🔧 Some tests failed. Check the output above for details.")
-
-        return passed == total
-
-# Run tests
-if __name__ == "__main__":
-    tester = EuropeanMappingAPITester()
-    tester.run_all_tests()
+if __name__ == '__main__':
+    sys.exit(main())
