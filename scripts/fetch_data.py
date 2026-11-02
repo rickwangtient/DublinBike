@@ -63,12 +63,14 @@ def fetch_stations():
 
     features = []
     for s in info['data']['stations']:
+        # A few stations have no name in the feed. Use the address instead.
+        name = (s.get('name') or s.get('address') or f"Station {s['station_id']}").title()
         features.append({
             'type': 'Feature',
             'geometry': {'type': 'Point', 'coordinates': [s['lon'], s['lat']]},
             'properties': {
                 'station_id': int(s['station_id']),
-                'name': s['name'].title(),
+                'name': name,
                 'address': s.get('address', ''),
                 'bike_stands': s.get('capacity', 0),
                 'available_bikes': bikes.get(s['station_id'], 0),
