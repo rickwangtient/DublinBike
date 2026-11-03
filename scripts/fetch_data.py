@@ -33,9 +33,11 @@ BBOX = '(53.325,-6.315,53.365,-6.225)'
 
 
 def save(name, features):
+    """Save  writes to one  geo.json and places caller. requested """
     path = DATA_DIR / name
     path.write_text(json.dumps({'type': 'FeatureCollection', 'features': features}))
     print(f'  saved {len(features)} features to data/{name}')
+
 
 
 def overpass(query):

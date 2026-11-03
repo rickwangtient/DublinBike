@@ -32,8 +32,8 @@ services:
 
   web:
     build: .
-    # Changed: Django project is now called dublin_bike
-    command: gunicorn dublin_bike.wsgi:application --bind 0.0.0.0:8000
+    # runserver serves the admin CSS. Gunicorn does not.
+    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
@@ -45,8 +45,8 @@ services:
       DATABASE_HOST: ${DATABASE_HOST}
       DATABASE_PORT: ${DATABASE_PORT}
       SECRET_KEY: ${DJANGO_SECRET_KEY}
-      DEBUG: "False"
-      DJANGO_DEBUG: "False"
+      DEBUG: "True"
+      DJANGO_DEBUG: "True"
     depends_on:
       db:
         condition: service_healthy
